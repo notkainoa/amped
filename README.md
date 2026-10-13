@@ -9,12 +9,12 @@ handful of switches.
 
 ## Install
 
-```sh
-brew install --cask gustaferiksson/tap/amped
-```
+Download `Amped.app` from the [latest release](https://github.com/notkainoa/amped/releases/latest),
+unzip it, and move it to `/Applications`. macOS 26 (Tahoe) or newer.
 
-Or grab the notarized `Amped.app` from the [latest release](https://github.com/gustaferiksson/amped/releases/latest)
-and drop it in `/Applications`. macOS 26 (Tahoe) or newer.
+The build is not notarized. The first time you open it, right-click the app and choose Open.
+
+Check for Updates looks at that releases page and, when a newer build exists, opens it so you can download and replace the app.
 
 ## The menu
 
@@ -22,8 +22,8 @@ Click the pill in the menu bar:
 
 | Toggle | What it does |
 | --- | --- |
-| **Keep Awake** | Prevents idle sleep while the lid is open. Uses an IOKit power assertion (same mechanism as `caffeinate`). No password needed. |
-| **Keep Running While Locked** | Keeps the Mac and everything on it running with the lid **closed** (clamshell), and, when no external display is active, locks the screen and turns it off the instant the lid shuts so it stays behind your password. Runs `pmset -a disablesleep 1`, the only thing that overrides clamshell sleep; suppressing sleep also suppresses the usual lock-on-sleep, which is why Amped locks instead. An independent switch: it keeps the Mac awake on its own (it holds the idle system-sleep assertion internally) without flipping the *Keep Awake* toggle. It lets the display sleep as usual, so the normal idle lock still applies; turn on *Keep Awake* too to keep the screen on. |
+| **Keep Awake (When Lid Is Open)** | Prevents idle sleep while the lid is open. Uses an IOKit power assertion (same mechanism as `caffeinate`). No password needed. |
+| **When Lid Is Closed** | One choice: **Off**, **Keep Awake but Lock the Screen**, or **Keep Awake and Keep Screen Unlocked**. Off lets the lid sleep the Mac. The other two keep it running with `pmset -a disablesleep 1`. **Keep Awake but Lock the Screen** locks the screen and turns the display off when you close the lid without an external display. Suppressing sleep also suppresses the usual lock-on-sleep, which is why Amped locks instead. **Keep Awake and Keep Screen Unlocked** leaves the desktop unlocked and turns the built-in backlight off, so the screen keeps drawing and can still be controlled. Anyone who opens the lid can use the Mac without a password. |
 | **Auto-off at 20% Battery** | Safety net: when on battery and the charge drops to 20% or below, Amped releases everything so the Mac can sleep normally. Remembered between launches. |
 | **Launch at Login** | Registers Amped as a login item (via `SMAppService`) so the pill is there every time you log in. |
 
@@ -49,9 +49,9 @@ Developer-ID **Team ID** (`setCodeSigningRequirement`), so nothing but Amped's
 signed app can reach the helper, and the helper does exactly one thing:
 `pmset disablesleep` on/off.
 
-The **first time** you enable *Keep Running While Locked*, Amped offers to set the helper
+The **first time** you choose *Keep Awake but Lock the Screen* or *Keep Awake and Keep Screen Unlocked*, Amped offers to set the helper
 up. Approve "Amped" once under **System Settings → General → Login Items &
-Extensions**, and from then on the lid toggle is silent — which also lets
+Extensions**, and from then on that choice is silent — which also lets
 *Auto-off at 20%* drop clamshell mode while the lid is shut and you're away.
 Prefer not to? *Just This Time* keeps the Mac awake now with a single password
 prompt and installs nothing. Remove the helper anytime from that same System
@@ -90,8 +90,8 @@ cp -R dist/Amped.app /Applications/        # run from a stable location
 open /Applications/Amped.app
 ```
 
-Then: enable *Keep Running While Locked* → *Set Up Helper…* → approve **Amped** in System
-Settings → toggle *Keep Running While Locked* again — it's now silent. (No Team ID is
+Then: choose *Keep Awake but Lock the Screen* → *Set Up Helper…* → approve **Amped** in System
+Settings → choose it again — it's now silent. (No Team ID is
 hard-coded: the app reads its own at runtime to pin the XPC channel to the same
 team.)
 
@@ -114,8 +114,8 @@ Set `NOTARY_PROFILE=Amped` in `.env`, then after a signed `./build.sh`:
 Distribute the stapled `dist/Amped.app` (zip or DMG). `altool` is dead since
 Nov 2023 — this uses `notarytool`.
 
-For **automated releases** — push a `v*` tag and CI produces the notarized
-GitHub Release and bumps the Homebrew cask — see [`docs/RELEASING.md`](docs/RELEASING.md).
+Pushing to `main` publishes an unsigned GitHub Release. See [`docs/RELEASING.md`](docs/RELEASING.md).
+Notarization is separate, and it is not part of that release yet.
 
 To work on it in Xcode:
 

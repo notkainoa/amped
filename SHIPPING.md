@@ -28,36 +28,14 @@ cd /Users/gustaf/Repos/Gustaf/amped
 Ends with `✅ Notarized & stapled`. Hand out the stapled `dist/Amped.app`
 (zip it, or wrap in a DMG).
 
-## Automated releases (GitHub Actions)
+## GitHub releases
 
-> Full step-by-step (one-time setup + every release) lives in
-> [`docs/RELEASING.md`](docs/RELEASING.md). Short version below.
+Pushing to `main` runs `.github/workflows/release.yml`, which builds an unsigned
+app and attaches `Amped-<version>.zip` to a GitHub Release. No Apple secrets.
+See [`docs/RELEASING.md`](docs/RELEASING.md).
 
-`.github/workflows/release.yml` does the whole thing on a version tag:
-
-```sh
-git tag v1.0 && git push origin v1.0
-```
-
-→ Developer ID signed build → notarize → staple → `Amped-1.0.zip`
-attached to a GitHub Release → Homebrew cask bumped in `gustaferiksson/homebrew-tap`.
-`.github/workflows/ci.yml` separately builds (unsigned) on every push/PR and
-asserts the icon is in the bundle.
-
-### CI release secrets
-
-Add these under the repo's **Settings → Secrets and variables → Actions**:
-
-| Secret | What it is / how to get it |
-| --- | --- |
-| `APPLE_CERT_P12` | Your *Developer ID Application* cert+key exported from Keychain Access as a `.p12`, then `base64 -i cert.p12 \| pbcopy`. |
-| `APPLE_CERT_PASSWORD` | The password you set when exporting the `.p12`. |
-| `NOTARY_APPLE_ID` | The Apple ID email that owns the Developer ID certificate. |
-| `NOTARY_PASSWORD` | An app-specific password for that Apple ID: appleid.apple.com → Sign-In & Security → App-Specific Passwords. Not your Apple ID password. |
-| `TAP_GITHUB_TOKEN` | A fine-grained PAT with **Contents: read/write** on `gustaferiksson/homebrew-tap`. Required — preflight fails the release if it is unset. |
-
-The Team ID (`82K3YC8HVF`) is not secret — it's baked into every signed binary
-and lives in the workflow and README.
+Notarized, self-replacing updates are not part of that workflow. The steps
+above are for a local notarized build when you want one.
 
 ## If notarization fails
 

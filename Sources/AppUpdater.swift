@@ -9,7 +9,9 @@ enum AppUpdater {
 
     private static let appName = "Amped"
     private static let latestAPI =
-        URL(string: "https://api.github.com/repos/gustaferiksson/amped/releases/latest")!
+        URL(string: "https://api.github.com/repos/notkainoa/amped/releases/latest")!
+    // Unsigned releases cannot replace the app in place. Open the release page instead.
+    private static let replacesItself = false
     // Never relax: an unsigned, wrong-team or wrong-app download must never reach the bundle.
     private static let requirement = "=anchor apple generic"
         + " and certificate leaf[subject.OU] = \"82K3YC8HVF\""
@@ -28,27 +30,30 @@ enum AppUpdater {
         else { return }
         clearStaging()
         Task { @MainActor in
-            guard let latest = await fetchLatest() else {
+            switch await fetchLatest() {
+            case .unreachable:
                 if manual { alert("Update check failed", "Could not reach github.com.") }
-                return
+            case .missing:
+                if manual { alert("No release yet", "Nothing has been published on GitHub.") }
+            case .found(let version, let asset, let page):
+                guard isNewer(version, than: current) else {
+                    if manual { alert("You’re up to date", "\(appName) \(current) is the latest version.") }
+                    return
+                }
+                offer(version: version, asset: asset, page: page)
             }
-            guard isNewer(latest.version, than: current) else {
-                if manual { alert("You’re up to date", "\(appName) \(current) is the latest version.") }
-                return
-            }
-            offer(version: latest.version, asset: latest.asset, page: latest.page)
         }
     }
 
     @MainActor
     private static func offer(version: String, asset: URL?, page: URL) {
-        let installable = asset != nil && isSelfUpdatable
+        let installable = replacesItself && asset != nil && isSelfUpdatable
             && FileManager.default.isWritableFile(atPath: installDir.path)
         let panel = NSAlert()
         panel.messageText = "\(appName) \(version) is available"
         panel.informativeText = installable
             ? "\(appName) will download it, replace itself and relaunch."
-            : "\(appName) can’t update itself where it is installed — download it from GitHub."
+            : "Download it from the latest GitHub release and replace the app."
         panel.addButton(withTitle: installable ? "Install" : "Download")
         panel.addButton(withTitle: "Later")
         NSApp.activate()
@@ -95,17 +100,26 @@ enum AppUpdater {
         panel.runModal()
     }
 
-    private static func fetchLatest() async -> (version: String, asset: URL?, page: URL)? {
+    private enum LatestRelease {
+        case found(version: String, asset: URL?, page: URL)
+        case missing
+        case unreachable
+    }
+
+    private static func fetchLatest() async -> LatestRelease {
         var request = URLRequest(url: latestAPI)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let http = response as? HTTPURLResponse
+        else { return .unreachable }
+        if http.statusCode == 404 { return .missing }
+        guard http.statusCode == 200,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = json["tag_name"] as? String,
               let version = version(fromTag: tag),
               let page = (json["html_url"] as? String).flatMap(URL.init(string:))
-        else { return nil }
-        return (version, assetURL(in: json, version: version), page)
+        else { return .unreachable }
+        return .found(version: version, asset: assetURL(in: json, version: version), page: page)
     }
 
     private static func assetURL(in json: [String: Any], version: String) -> URL? {
