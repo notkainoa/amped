@@ -36,12 +36,12 @@ struct AmpedToggle: ControlWidget {
 struct LidClosedToggle: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "dev.gustaf.Amped.lidClosed", provider: GroupValueProvider(key: AmpedDefaults.lidClosedKey)) { isOn in
-            ControlWidgetToggle("Keep Running While Locked", isOn: isOn, action: SetLidClosedIntent()) { isOn in
+            ControlWidgetToggle("When Lid Is Closed", isOn: isOn, action: SetLidClosedIntent()) { isOn in
                 Label(isOn ? "On" : "Off", systemImage: "laptopcomputer")
             }
         }
-        .displayName("Keep Running While Locked")
-        .description("Keep your Mac running with the lid closed, and lock the screen when it closes.")
+        .displayName("When Lid Is Closed")
+        .description("Keep your Mac running with the lid closed.")
     }
 }
 

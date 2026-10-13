@@ -1,20 +1,24 @@
 import SwiftUI
-import AppKit
 
 struct MenuContent: View {
     @ObservedObject var controller: SleepController
     @AppStorage(AppUpdater.checksAutomaticallyKey) private var checksForUpdatesAutomatically = true
 
     var body: some View {
-        Toggle("Keep Awake", isOn: Binding(
+        Toggle("Keep Awake (When Lid Is Open)", isOn: Binding(
             get: { controller.keepAwake },
             set: { controller.setKeepAwake($0) }
         ))
 
-        Toggle("Keep Running While Locked", isOn: Binding(
-            get: { controller.lidClosed },
-            set: { controller.setLidClosed($0) }
-        ))
+        Picker("When Lid Is Closed", selection: Binding(
+            get: { controller.lidMenuChoice },
+            set: { controller.setLidMenuChoice($0) }
+        )) {
+            Text("Off").tag(LidMenuChoice.off)
+            Text("Keep Awake but Lock the Screen").tag(LidMenuChoice.lock)
+            Text("Keep Awake and Keep Screen Unlocked").tag(LidMenuChoice.keepUnlocked)
+        }
+        .pickerStyle(.inline)
 
         Divider()
 

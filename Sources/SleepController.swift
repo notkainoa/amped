@@ -16,6 +16,8 @@ final class SleepController: ObservableObject {
         didSet { mirrorControlState() }
     }
 
+    @Published private(set) var lidCloseAction: LidCloseAction
+
     @Published private(set) var autoOff: Bool {
         didSet { mirrorControlState() }
     }
@@ -29,13 +31,16 @@ final class SleepController: ObservableObject {
 
     private let systemAssertion = PowerAssertion(type: kIOPMAssertionTypePreventUserIdleSystemSleep)
     private let displayAssertion = PowerAssertion(type: kIOPMAssertionTypePreventUserIdleDisplaySleep)
+    private let backlight = Backlight()
     private let lidMonitor = LidMonitor()
     private var batteryTimer: Timer?
+    private var lidIsShut = false
 
     private static let autoOffKey = "autoOffEnabled"
     private static let helperPromptedKey = "helperPrompted"
     private static let lastKeepAwakeKey = "lastActiveKeepAwake"
     private static let lastLidClosedKey = "lastActiveLidClosed"
+    private static let lidCloseActionKey = "lidCloseAction"
     private let autoOffThreshold = 20
 
     private var helperPrompted: Bool {
@@ -44,14 +49,23 @@ final class SleepController: ObservableObject {
     }
 
     private init() {
-        UserDefaults.standard.register(defaults: [Self.lastKeepAwakeKey: true])
+        UserDefaults.standard.register(defaults: [
+            Self.lastKeepAwakeKey: true,
+            Self.lidCloseActionKey: LidCloseAction.lock.rawValue,
+        ])
         autoOff = UserDefaults.standard.bool(forKey: Self.autoOffKey)
+        lidCloseAction = LidCloseAction(rawValue: UserDefaults.standard.string(forKey: Self.lidCloseActionKey) ?? "") ?? .lock
+        lidIsShut = LidMonitor.isClosed()
         refreshBattery()
         batteryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
-        lidMonitor.start { [weak self] in
-            MainActor.assumeIsolated { self?.handleLidClosed() }
+        lidMonitor.start { [weak self] closed in
+            MainActor.assumeIsolated {
+                guard let self, self.lidIsShut != closed else { return }
+                self.lidIsShut = closed
+                self.applyLidPresentation()
+            }
         }
         mirrorControlState()
     }
@@ -88,11 +102,43 @@ final class SleepController: ObservableObject {
         ControlCenter.shared.reloadAllControls()
     }
 
+    var lidMenuChoice: LidMenuChoice {
+        guard lidClosed else { return .off }
+        switch lidCloseAction {
+        case .lock: return .lock
+        case .keepUnlocked: return .keepUnlocked
+        }
+    }
+
+    func setLidMenuChoice(_ choice: LidMenuChoice) {
+        switch choice {
+        case .off:
+            if lidClosed { setLidClosed(false) }
+        case .lock:
+            chooseLidAction(.lock)
+        case .keepUnlocked:
+            chooseLidAction(.keepUnlocked)
+        }
+    }
+
+    private func chooseLidAction(_ action: LidCloseAction) {
+        let turningOn = !lidClosed
+        if lidCloseAction != action { setLidCloseAction(action) }
+        if turningOn { setLidClosed(true) }
+    }
+
+    func setLidCloseAction(_ action: LidCloseAction) {
+        guard action != lidCloseAction else { return }
+        lidCloseAction = action
+        UserDefaults.standard.set(action.rawValue, forKey: Self.lidCloseActionKey)
+        lidIsShut = LidMonitor.isClosed()
+        syncAssertion()
+        applyLidPresentation()
+    }
+
     func setLidClosed(_ on: Bool) {
         guard on else {
-            _ = Privileged.setDisableSleep(false)
-            lidClosed = false
-            syncAssertion()
+            stopLidMode()
             return
         }
 
@@ -113,40 +159,68 @@ final class SleepController: ObservableObject {
 
         if Privileged.setDisableSleep(true) {
             lidClosed = true
+            lidIsShut = LidMonitor.isClosed()
             syncAssertion()
             rememberActiveCombination()
+            applyLidPresentation()
         }
     }
 
+    private func stopLidMode() {
+        backlight.restore()
+        _ = Privileged.setDisableSleep(false)
+        lidClosed = false
+        syncAssertion()
+    }
+
     // Lid-closed needs the system assertion too: a shut lid under disablesleep still idle-sleeps without it.
+    // Unlocked mode also holds the display assertion, so idle display-off cannot lock the session.
     private func syncAssertion() {
         if keepAwake || lidClosed {
             systemAssertion.enable()
         } else {
             systemAssertion.disable()
         }
-        if keepAwake {
+        if keepAwake || (lidClosed && lidCloseAction == .keepUnlocked) {
             displayAssertion.enable()
         } else {
             displayAssertion.disable()
         }
     }
 
+    private func applyLidPresentation() {
+        guard lidClosed, lidIsShut else {
+            backlight.restore()
+            return
+        }
+        guard onlyBuiltinDisplay() else { return }
+        switch lidCloseAction {
+        case .lock:
+            backlight.restore()
+            ScreenLock.lock()
+            sleepDisplay()
+        case .keepUnlocked:
+            backlight.dimBuiltin()
+        }
+    }
+
+    private func onlyBuiltinDisplay() -> Bool {
+        var count: UInt32 = 0
+        CGGetActiveDisplayList(0, nil, &count)
+        guard count > 0 else { return true }
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        CGGetActiveDisplayList(count, &displays, &count)
+        return displays.prefix(Int(count)).allSatisfy { CGDisplayIsBuiltin($0) != 0 }
+    }
+
+    private func sleepDisplay() {
+        _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pmset"), arguments: ["displaysleepnow"])
+    }
+
     func setAutoOff(_ on: Bool) {
         autoOff = on
         UserDefaults.standard.set(on, forKey: Self.autoOffKey)
         if on { tick() }
-    }
-
-    private func handleLidClosed() {
-        guard lidClosed else { return }
-        var count: UInt32 = 0
-        CGGetActiveDisplayList(0, nil, &count)
-        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        CGGetActiveDisplayList(count, &displays, &count)
-        guard displays.allSatisfy({ CGDisplayIsBuiltin($0) != 0 }) else { return }
-        ScreenLock.lock()
-        _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pmset"), arguments: ["displaysleepnow"])
     }
 
     private func setUpHelper() {
@@ -172,6 +246,7 @@ final class SleepController: ObservableObject {
         guard autoOff, onBattery, let percent = batteryPercent, percent <= autoOffThreshold else { return }
         guard keepAwake || lidClosed else { return }
 
+        backlight.restore()
         systemAssertion.disable()
         displayAssertion.disable()
         // Without the helper, clamshell mode can't be dropped unattended.
@@ -196,6 +271,7 @@ final class SleepController: ObservableObject {
 
     func cleanup() {
         lidMonitor.stop()
+        backlight.restore()
         systemAssertion.disable()
         displayAssertion.disable()
         if lidClosed { _ = Privileged.setDisableSleep(false) }
@@ -211,7 +287,12 @@ final class SleepController: ObservableObject {
 
     var statusText: String {
         let battery = batteryPercent.map { " · \($0)%" } ?? ""
-        if lidClosed { return "Awake — keeps running while locked\(battery)" }
+        if lidClosed {
+            switch lidCloseAction {
+            case .lock: return "Awake — locks when the lid closes\(battery)"
+            case .keepUnlocked: return "Awake — screen stays unlocked\(battery)"
+            }
+        }
         if keepAwake { return "Awake\(battery)" }
         return "Sleep allowed\(battery)"
     }

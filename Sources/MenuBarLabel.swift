@@ -8,7 +8,7 @@ struct MenuBarLabel: View {
         .withSymbolConfiguration(.preferringHierarchical())!
 
     var body: some View {
-        if controller.lidClosed && !controller.keepAwake {
+        if controller.lidClosed && !controller.keepAwake && controller.lidCloseAction == .lock {
             Image(nsImage: Self.dimmedPills)
         } else {
             Image(systemName: controller.menuBarSymbolName)

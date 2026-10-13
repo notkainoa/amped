@@ -21,7 +21,7 @@ struct SetAmpedActiveIntent: SetValueIntent {
 }
 
 struct SetLidClosedIntent: SetValueIntent {
-    static let title: LocalizedStringResource = "Keep Running While Locked"
+    static let title: LocalizedStringResource = "When Lid Is Closed"
     static let supportedModes: IntentModes = .foreground(.dynamic)
 
     @Parameter(title: "Allowed")

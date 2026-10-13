@@ -6,7 +6,7 @@ struct SleepSettings: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Keep awake", isOn: Binding(
+                Toggle("Keep awake (when lid is open)", isOn: Binding(
                     get: { controller.keepAwake },
                     set: { controller.setKeepAwake($0) }
                 ))
@@ -15,12 +15,17 @@ struct SleepSettings: View {
             }
 
             Section {
-                Toggle("Keep running while locked", isOn: Binding(
-                    get: { controller.lidClosed },
-                    set: { controller.setLidClosed($0) }
-                ))
+                Picker("When lid is closed", selection: Binding(
+                    get: { controller.lidMenuChoice },
+                    set: { controller.setLidMenuChoice($0) }
+                )) {
+                    Text("Off").tag(LidMenuChoice.off)
+                    Text("Keep awake but lock the screen").tag(LidMenuChoice.lock)
+                    Text("Keep awake and keep screen unlocked").tag(LidMenuChoice.keepUnlocked)
+                }
+                .pickerStyle(.radioGroup)
             } footer: {
-                Text("Keeps your Mac and everything on it running even with the lid closed, and locks the screen and turns it off when you close the lid without an external display. This changes a system power setting, needs Amped’s helper or an administrator password, and Amped turns it back off when it quits.")
+                Text("Off lets the Mac sleep when you close the lid. Keep awake but lock the screen keeps it running, then locks and turns the display off unless an external display is connected. Keep awake and keep screen unlocked keeps it running with the desktop available and the built-in backlight off, so anyone who opens the lid can use the Mac without a password. Keeping it running changes a system power setting, needs Amped’s helper or an administrator password, and Amped turns it back off when it quits.")
             }
 
             Section {
@@ -33,6 +38,6 @@ struct SleepSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 360)
+        .frame(height: 520)
     }
 }

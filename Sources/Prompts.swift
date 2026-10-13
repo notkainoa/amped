@@ -38,7 +38,7 @@ enum Prompts {
         alert.messageText = "Approve Amped’s background helper"
         alert.informativeText = """
         In the window that just opened (Login Items & Extensions), turn on \
-        “Amped”. Then flip Keep Running While Locked again — it'll be silent from now on.
+        “Amped”. Then choose Keep Awake but Lock the Screen again — it'll be silent from now on.
         """
         alert.addButton(withTitle: "OK")
         NSApp.activate()
